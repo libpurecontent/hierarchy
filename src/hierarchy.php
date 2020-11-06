@@ -6,22 +6,18 @@ class hierarchy
 	# Class properties
 	private $data;
 	private $error;
-	private $linkBaseUrl;
 	private $children;
 	
 	# Determine the field names
-	private $parentFieldname = 'parentId';
-	private $childrenFieldname = '_children';
+	const PARENT_FIELDNAME = 'parentId';
+	const CHILDREN_FIELDNAME = '_children';
 	
 	
 	# Constructor
-	public function __construct ($data, $linkBaseUrl = false, $rootNodeId = false /* To force the root to be from a certain node */)
+	public function __construct ($data, $rootNodeId = false /* To force the root to be from a certain node */)
 	{
 		# Register the data
 		$this->data = $data;
-		
-		# Register supplied parameters
-		$this->linkBaseUrl = $linkBaseUrl;
 		
 		# Create the hierarchy
 		$this->hierarchy = $this->createHierarchy ($rootNodeId);
@@ -43,23 +39,6 @@ class hierarchy
 	}
 	
 	
-	# Setter to set the link base URL
-	public function setLinkBaseUrl ($linkBaseUrl)
-	{
-		# Register the supplied parameter
-		$this->linkBaseUrl = $linkBaseUrl;
-	}
-	
-	
-	/*
-	# Function to retrieve the raw, non-hierarchical data
-	public function getRawData ()
-	{
-		return $this->data;
-	}
-	*/
-	
-	
 	# Function to create a hierarchy from a flat data structure containing parentIds
 	private function createHierarchy ($rootNodeId = false)
 	{
@@ -77,7 +56,7 @@ class hierarchy
 		
 		# Ensure every item has a parent field
 		foreach ($this->data as $key => $item) {
-			if (!isSet ($item[$this->parentFieldname])) {
+			if (!isSet ($item[self::PARENT_FIELDNAME])) {
 				$this->error = 'Not all items in the data have a parent defined';
 				return false;
 			}
@@ -93,9 +72,9 @@ class hierarchy
 		
 		# Ensure every parent exists in the table
 		foreach ($this->data as $key => $item) {
-			$parent = $item[$this->parentFieldname];
+			$parent = $item[self::PARENT_FIELDNAME];
 			if (!isSet ($this->data[$parent])) {
-				$this->error = 'Not all items in the data have a parent which exists.';
+				$this->error = "Not all items in the data have a parent which exists. (Failure at ID {$key}).";
 				return false;
 			}
 		}
@@ -107,7 +86,7 @@ class hierarchy
 		$hierarchy = array ();
 		#!# Need to move this into the traversal - not sure why this doesn't work
 		$hierarchy[$rootNodeId] = $this->data[$rootNodeId];
-		$hierarchy[$rootNodeId][$this->childrenFieldname] = $this->hierarchyTraversal ($rootNodeId);
+		$hierarchy[$rootNodeId][self::CHILDREN_FIELDNAME] = $this->hierarchyTraversal ($rootNodeId);
 		
 		# Ensure there is a single root node
 		if (count ($hierarchy) != 1) {
@@ -126,7 +105,7 @@ class hierarchy
 		# Determine which items have the same parent ID as their own ID
 		$roots = array ();
 		foreach ($this->data as $key => $item) {
-			if ($item[$this->parentFieldname] == $key) {
+			if ($item[self::PARENT_FIELDNAME] == $key) {
 				$roots[] = $key;
 			}
 		}
@@ -150,7 +129,7 @@ class hierarchy
 		# Create a list
 		$children = array ();
 		foreach ($this->data as $key => $item) {
-			$parent = $item[$this->parentFieldname];
+			$parent = $item[self::PARENT_FIELDNAME];
 			if ($parent == $key) {continue;}	// Skip the root
 			$children[$parent][] = $key;
 		}
@@ -172,7 +151,7 @@ class hierarchy
 		# For each child of the current node, add it to the hierarchy
 		foreach ($this->childrenRegistry[$currentNodeId] as $childId) {
 			$hierarchy[$childId] = $this->data[$childId];	// Add in the data
-			$hierarchy[$childId][$this->childrenFieldname] = $this->hierarchyTraversal ($childId);
+			$hierarchy[$childId][self::CHILDREN_FIELDNAME] = $this->hierarchyTraversal ($childId);
 		}
 		
 		# Return the hierarchy
@@ -219,79 +198,8 @@ class hierarchy
 	}
 	
 	
-	# Function to provide indented text as values for a <select> widget; see: http://stackoverflow.com/questions/10011194
-	public function asIndentedListing ($data, $indentString = '    ', /* private */ $level = 0)
-	{
-		# Start a list
-		$list = array ();
-		
-		# Loop through the data
-		foreach ($data as $key => $item) {
-			$list[$key] = str_repeat ($indentString, $level) . $item['name'];
-			if (isSet ($item[$this->childrenFieldname])) {
-				$list += $this->asIndentedListing ($item[$this->childrenFieldname], $indentString, ($level + 1));	// += maintains the keys
-			}
-		}
-		
-		# Return the list
-	    return $list;
-	}
-	
-	
-	# Function to format a hierarchical list as a <ul>
-	public function asUl ($data, $additionLinks = false, $editLinks = false, $hidingProperty = false, $highlightId = false, $class = 'hierarchicallisting', /* private */ $tabs = 0)
-	{
-		# Start a list of items
-		$list = array ();
-		
-		# Loop through the data
-		foreach ($data as $key => $item) {
-			$list[$key] = htmlspecialchars ($item['name']);
-			if ($highlightId && ($highlightId == $key)) {
-				$list[$key] = "<strong>{$list[$key]}</strong>";
-			}
-			$hiding = ($hidingProperty && isSet ($item[$hidingProperty]) && ($item[$hidingProperty]));
-			if ($hiding) {
-				$list[$key] = "<span>{$list[$key]}</span>";
-			}
-			if ($this->linkBaseUrl) {
-				$urlId = (isSet ($item['moniker']) ? $item['moniker'] : $key);	// Prefer URL monikers if supplied
-				$icon = false;
-				if ($editLinks) {
-					if (isSet ($item['_hasEntry'])) {
-						$icon = ($item['_hasEntry'] ? 'page' : 'page_white');
-						if (isSet ($item['pageBreakBefore'])) {
-							if ($item['pageBreakBefore']) {
-								$icon = ($item['_hasEntry'] ? 'page_green' : 'page_white');
-							}
-						}
-						$icon = "<img src=\"/images/icons/{$icon}.png\" alt=\"\" border=\"0\" /> ";
-					}
-				}
-				$list[$key] = "<a href=\"{$this->linkBaseUrl}" . (isSet ($item['_url']) ? $item['_url'] : "{$urlId}/") . "\">{$icon}{$list[$key]}</a>";
-				if ($editLinks) {
-					$list[$key] .= sprintf (" &nbsp;<a class=\"minilink\" href=\"{$editLinks}\" title=\"Edit\">edit</a>", $urlId);
-				}
-				if ($additionLinks && !$hiding) {
-					$list[$key] .= sprintf (" &nbsp;<a class=\"minilink\" href=\"{$additionLinks}\" title=\"Add item within\">+</a>", $key);
-				}
-			}
-			if (isSet ($item[$this->childrenFieldname])) {
-				$list[$key] .= $this->asUl ($item[$this->childrenFieldname], $additionLinks, $editLinks, $hidingProperty, $highlightId, false, $tabs + 1);
-			}
-		}
-		
-		# Compile the HTML
-		require_once ('application.php');
-		$html = application::htmlUl ($list, $tabs, $class);
-		
-		# Return the HTML
-	    return $html;
-	}
-	
-	
 	# Function to get the direct family relevant to the current node, i.e. the current node, down the tree and up the tree (i.e. current node, children, grandchildren, etc., parent, grandparent, etc.) related to a specific node
-	public function getFamily ($currentNodeId)
+	public function getFamily ($currentNodeId, $includeAncestors = true)
 	{
 		# Start an array of the family
 		$family = array ();
@@ -307,9 +215,11 @@ class hierarchy
 		$descendants = $this->getDescendants ($currentNodeId);
 		$family += $descendants;
 		
-		# Add the upwards values (i.e. parent, grandparent, etc.)
-		$ancestors = $this->getAncestors ($currentNodeId);
-		$family += $ancestors;
+		# Add the upwards values (i.e. parent, grandparent, etc.), unless disabled
+		if ($includeAncestors) {
+			$ancestors = $this->getAncestors ($currentNodeId);
+			$family += $ancestors;
+		}
 		
 		# Return the family
 		return $family;
@@ -317,7 +227,7 @@ class hierarchy
 	
 	
 	# Function to get the descendants of the current node (i.e. children, grandchildren, etc.)
-	private function getDescendants ($currentNodeId)
+	public function getDescendants ($currentNodeId)
 	{
 		# Start a list of descendants
 		$descendants = array ();
@@ -339,10 +249,15 @@ class hierarchy
 	
 	
 	# Function to get the ancestors of the current node (i.e. parent, grantparent, etc., all the way to the root), starting nearest-first (i.e. parent first, then grandparent, etc.)
-	public function getAncestors ($currentNodeId)
+	public function getAncestors ($currentNodeId, $includeCurrent = false)
 	{
 		# Start a list of ancestors
 		$ancestors = array ();
+		
+		# If required, include the current
+		if ($includeCurrent) {
+			$ancestors[$currentNodeId] = $this->data[$currentNodeId];
+		}
 		
 		# Get the start node's parent
 		$parentId = $this->data[$currentNodeId]['parentId'];
@@ -371,6 +286,104 @@ class hierarchy
 		return $ancestors;
 	}
 	
+	
+	# Function to get the nearest ancestor of the current node having a specified attribute value
+	public function getNearestAncestorHavingAttributeValue ($currentNodeId, $attribute, $value, $returnRootIfNone = false, $includeCurrent = false)
+	{
+		# Get the ancestors of the current node
+		$ancestors = $this->getAncestors ($currentNodeId, $includeCurrent);
+		
+		# Traverse up the hierarchy to find the nearest 'container' item, and return it if found
+		foreach ($ancestors as $nodeId => $ancestor) {
+			if ($ancestor[$attribute] == $value) {
+				return $nodeId;
+				break;
+			}
+		}
+		
+		# If required, return root if none
+		if ($returnRootIfNone) {
+			return $nodeId;
+		}
+		
+		# Return false
+		return false;
+	}
+	
+	
+	# Function to provide indented text as values for a <select> widget; see: http://stackoverflow.com/questions/10011194
+	public static function asIndentedListing ($data, $indentString = '    ', /* private */ $level = 0)
+	{
+		# Start a list
+		$list = array ();
+		
+		# Loop through the data
+		foreach ($data as $key => $item) {
+			$list[$key] = str_repeat ($indentString, $level) . $item['name'];
+			if (isSet ($item[self::CHILDREN_FIELDNAME])) {
+				$list += self::asIndentedListing ($item[self::CHILDREN_FIELDNAME], $indentString, ($level + 1));	// += maintains the keys
+			}
+		}
+		
+		# Return the list
+	    return $list;
+	}
+	
+	
+	# Function to format a hierarchical list as a <ul>
+	public static function asUl ($data, $linkBaseUrl, $additionLinks = false, $editLinks = false, $hidingProperty = false, $highlightId = false, $class = 'hierarchicallisting', $highlightingProperty = false, /* private */ $tabs = 0)
+	{
+		# Start a list of items
+		$list = array ();
+		
+		# Loop through the data
+		foreach ($data as $key => $item) {
+			$list[$key] = htmlspecialchars ($item['name']);
+			$highlightedId = ($highlightId && ($highlightId == $key));	// Current ID highlighting
+			$highlightedEntry = ($highlightingProperty && isSet ($item[$highlightingProperty]) && $item[$highlightingProperty]);
+			if ($highlightedId || $highlightedEntry) {
+				$list[$key] = "<strong>{$list[$key]}</strong>";
+			}
+			$hiding = ($hidingProperty && isSet ($item[$hidingProperty]) && ($item[$hidingProperty]));
+			if ($hiding) {
+				$list[$key] = "<span>{$list[$key]}</span>";
+			}
+			
+			# Add the entry
+			$urlId = (isSet ($item['moniker']) ? $item['moniker'] : $key);	// Prefer URL monikers if supplied
+			$icon = false;
+			if ($editLinks) {
+				if (isSet ($item['_hasEntry'])) {
+					$icon = ($item['_hasEntry'] ? 'page' : 'page_white');
+					if (isSet ($item['pageBreakBefore'])) {
+						if ($item['pageBreakBefore']) {
+							$icon = ($item['_hasEntry'] ? 'page_green' : 'page_white');
+						}
+					}
+					$icon = "<img src=\"/images/icons/{$icon}.png\" alt=\"\" border=\"0\" /> ";
+				}
+			}
+			$list[$key] = '<a' . (isSet ($item['_class']) && $item['_class'] ? " class=\"{$item['_class']}\"" : '') . " href=\"{$linkBaseUrl}" . (isSet ($item['_url']) ? $item['_url'] : "{$urlId}/") . "\">{$icon}{$list[$key]}</a>";
+			if ($editLinks) {
+				$list[$key] .= sprintf (" &nbsp;<a class=\"minilink\" href=\"{$linkBaseUrl}" . (isSet ($item['_editUrl']) ? $item['_editUrl'] : '') . ($editLinks ? $editLinks : '') . "\" title=\"Edit\">edit</a>", $urlId);
+			}
+			if ($additionLinks && !$hiding) {
+				$list[$key] .= sprintf (" &nbsp;<a class=\"minilink\" href=\"{$linkBaseUrl}{$additionLinks}\" title=\"Add item within\">+</a>", $key);
+			}
+			
+			# Traverse
+			if (isSet ($item[self::CHILDREN_FIELDNAME])) {
+				$list[$key] .= self::asUl ($item[self::CHILDREN_FIELDNAME], $linkBaseUrl, $additionLinks, $editLinks, $hidingProperty, $highlightId, false, $highlightingProperty, $tabs + 1);
+			}
+		}
+		
+		# Compile the HTML
+		require_once ('application.php');
+		$html = application::htmlUl ($list, $tabs, $class);
+		
+		# Return the HTML
+	    return $html;
+	}
 }
 
 ?>
