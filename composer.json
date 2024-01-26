@@ -9,7 +9,9 @@
             "name": "mvl22"
         }
     ],
-    "require": {},
+    "require": {
+        "libpurecontent/application": "^1.9"
+    },
     "autoload": {
         "psr-0": {"hierarchy": "src/"}
     }

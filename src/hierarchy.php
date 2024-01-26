@@ -378,7 +378,6 @@ class hierarchy
 		}
 		
 		# Compile the HTML
-		require_once ('application.php');
 		$html = application::htmlUl ($list, $tabs, $class);
 		
 		# Return the HTML
